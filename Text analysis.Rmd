@@ -1,0 +1,213 @@
+---
+title: "Text Analysis"
+author: "Aishwarya"
+date: "10/16/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Text Pre Processing
+```{r text data analysis}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tokenizers)
+library(tidytext)
+
+data_main <- tidy_data
+
+apple_data <- data_main %>% filter(company == "apple") %>% select(summary)
+amazon_data <- data_main %>% filter(company == "amazon") %>% select(summary)
+google_data <- data_main %>% filter(company == "google") %>% select(summary)
+microsoft_data <- data_main %>% filter(company == "microsoft") %>% select(summary)
+facebook_data <- data_main %>% filter(company == "facebook") %>% select(summary)
+netflix_data <- data_main %>% filter(company == "netflix") %>% select(summary)
+```
+
+AMAZON
+FILTRING Former and Current Emplyee reviews
+```{r text data analysis}
+
+amazon_data_former  <- data_main %>% filter(company == "amazon" & `job-title` == "Former Employee ") %>% select(summary) 
+amazon_data_current  <- data_main %>% filter(company == "amazon", `job-title` == "Current Employee ") %>% select(summary)
+
+
+
+```
+
+
+Changing to lowercase
+```{r}
+
+amazon_data_former$summary <- tolower(amazon_data_former$summary)
+amazon_data_current$summary <- tolower(amazon_data_current$summary)
+amazon_data$summary <- tolower(amazon_data$summary)
+
+```
+
+
+
+
+```{r}
+rmv_spcl <- function(docs){
+  for (j in seq(docs)) {
+    docs[[j]] <- gsub("/", "", docs[[j]])
+    docs[[j]] <- gsub("@", "", docs[[j]])
+    docs[[j]] <- gsub("\\|", "", docs[[j]])
+    docs[[j]] <- gsub("\u2028", "", docs[[j]]) 
+    docs[[j]] <- gsub(",","", docs[[j]])
+    docs[[j]] <- gsub("'", "", docs[[j]])
+    docs[[j]] <- gsub("!", "", docs[[j]])
+    docs[[j]] <- gsub("&", "", docs[[j]])
+    docs[[j]] <- gsub("-", "", docs[[j]])
+    return(docs)
+  }
+}
+
+amazon_data_former <- rmv_spcl(amazon_data_former)
+amazon_data_current <- rmv_spcl(amazon_data_current)
+amazon_data <- rmv_spcl(amazon_data)
+
+amazon_freq_former <- unnest_tokens(amazon_data_former, word, summary)
+amazon_freq_current <- unnest_tokens(amazon_data_current, word, summary)
+amazon_data <- unnest_tokens(amazon_data,word,summary)
+```
+
+
+creating bigrams
+```{r}
+
+amazon_data_former <-amazon_data_former %>% separate(summary, c("word1", "word2"), sep = " ")
+amazon_data_current <-amazon_data_current %>% separate(summary, c("word1", "word2"), sep = " ")
+
+
+rmv_na <- function(data_set){
+  data_set <- data_set  %>% filter(word1 != "NA" | word2 != "NA")
+  data_set <- data_set %>% filter(word2 != "N/A" | word2 != "N/A")
+  return(data_set)
+}
+
+amazon_data_former <- rmv_na(amazon_data_former)
+amazon_data_current <- rmv_na(amazon_data_current)
+
+```
+
+
+Bigrams
+```{r}
+
+count_bigrams <- function(data_set){
+  data_set <- data_set %>% filter(!word1 %in% stop_words$word) %>% filter(!word2 %in% stop_words$word)
+  data_set<- data_set %>% unite(bigram, word1, word2, sep = " ") %>% count(bigram,sort = TRUE) %>% arrange(desc(n))
+  return(data_set)
+  
+  
+  
+  
+amazon_bigrams_former <- count_bigrams(amazon_data_former)
+amazon_bigrams_current <- count_bigrams(amazon_data_current)
+}
+```
+
+
+Visualizing bigrams
+```{r}
+
+library(gridExtra)
+
+#amazon
+p1 <- amazon_bigrams_former %>% top_n(5) %>% mutate(bigram = reorder(bigram,n))%>%ggplot(aes(x = bigram, y = n, fill = "black")) + geom_col(fill = "gold",show.legend = FALSE) + ggtitle("Former Employee") + ylab("Bigrams") +xlab("Count") + coord_flip()
+
+p2 <- amazon_bigrams_current %>% top_n(5) %>% mutate(bigram = reorder(bigram,n))%>%ggplot(aes(x = bigram, y = n)) + geom_col(fill = "gold",show.legend = FALSE) + ggtitle("Current Employee") + ylab("Bigrams") + xlab("Count") +  coord_flip()
+
+grid.arrange(p1,p2,nrow = 1)
+```
+
+Word Frequencies
+
+```{r}
+
+
+
+count_word <- function(data_set){
+  neg <- c("company", "apple", "amazon", "microsoft", "facebook", "google", "netflix")
+  data_set <- data_set %>% filter(!word %in% stop_words$word) %>% filter(!word %in% neg)
+  data_set<- data_set %>% count(word,sort = TRUE) %>% arrange(desc(n))
+  return(data_set)
+}
+
+
+amazon_freq_former <- count_word(amazon_freq_former)
+amazon_freq_current <- count_word(amazon_freq_current)
+
+
+
+#amazon
+p1 <- amazon_freq_former  %>% mutate(word = reorder(word,n))  %>% top_n(15) %>% ggplot(aes(x = word, y = n)) + geom_col(fill = "gold", show.legend = FALSE) + ggtitle("amazon Former Employee") + ylab("Words") +xlab("Frequency") + coord_flip()
+
+p2 <- amazon_freq_current %>% mutate(word = reorder(word,n))  %>% top_n(15) %>% ggplot(aes(x = word, y = n)) + geom_col(fill = "gold", show.legend = FALSE) + ggtitle("amazon Current Employee") + ylab("Words") + xlab("Frequency") +  coord_flip()
+
+```
+
+SENTIMENT ANALYSIS
+```{r}
+
+senti_analysis <- function(data_set,sentiment){
+  
+neg_wrds <- tibble(word = c("never", "no", "not", "without"))
+
+data_set  %>% filter(!word1 %in% neg_wrds$word) %>% 
+inner_join(get_sentiments(sentiment), by = c("word2" = "word"))  %>% 
+group_by(sentiment,word2) %>% summarise(n = n()) %>%  mutate(word2 = reorder(word2,n))  %>% top_n(5) %>%  ggplot(aes(word2, n)) + geom_col(aes(fill = sentiment), show.legend = FALSE)  +
+facet_wrap(~sentiment, scales="free") +
+coord_flip() + ggtitle("Top 5 words in Each Bing Sentiment") + 
+xlab("Words") + ylab("Count") 
+}
+
+#amazon
+senti_analysis(amazon_data_former,"bing")
+senti_analysis(amazon_data_current,"bing")
+
+
+sent_analysis <- function(data_set,sentiment){
+  
+neg_wrds <- tibble(word = c("never", "no", "not", "without"))
+
+data_set  %>% filter(!word1 %in% neg_wrds$word) %>% 
+inner_join(get_sentiments(sentiment), by = c("word2" = "word"))  %>% 
+group_by(sentiment,job_title) %>%  ggplot(aes(sentiment, ..prop..)) + geom_bar(aes(group = job_title , fill= job_title), position = "dodge")  + ggtitle("Negative and Positive Sentiments") + 
+xlab("Sentiment") + ylab("Count") 
+}
+
+
+
+
+#Amazon
+amazon_data_former <- amazon_data_former %>% mutate(job_title = "Former Employee" )
+amazon_data_current <- amazon_data_current %>% mutate(job_title = "Current Employee" )
+amazon_main_data <- amazon_data_current %>% full_join(amazon_data_former)
+sent_analysis(amazon_main_data, "bing")
+
+
+```
+
+
+WORD CLOUDS
+```{r}
+amazon_data <- count_word(amazon_data)
+amazon_data <- amazon_data %>% mutate(word = reorder(word,n)) %>% top_n(100)
+
+
+library(wordcloud2)
+set.seed(1)
+wordcloud2(amazon_data)
+
+
+
+```
+
