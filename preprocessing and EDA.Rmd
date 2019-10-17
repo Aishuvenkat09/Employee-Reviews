@@ -1,0 +1,685 @@
+---
+title: "Preprocessing"
+author: "Aishwarya"
+date: "10/16/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Loading all required packages
+
+```{r tidying data}
+
+
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(lubridate)
+library(tidyr)
+#install.packages("ggmap")
+library(ggmap)
+library(caret)
+library(modelr)
+
+#install.packages('installr')
+library(installr)
+
+## install gganimate from GitHub using following code
+# install.packages("devtools")
+library(devtools)
+#install_github("dgrtwo/gganimate")
+
+## install ImageMagick package
+#library(installr)
+#install.ImageMagick()
+#install.packages("gifski")
+
+library(tibble)
+library(lubridate)
+library(maps)
+library(ggthemes)
+library(gganimate)
+library(animation)
+
+## FOR TEXT MINING , install wordcloud2 package from github
+require(devtools)
+# install_github("lchiffon/wordcloud2")
+
+#install.packages("treemap")
+#install.packages("leaflet")
+
+library(treemap)
+library(leaflet)
+
+
+```
+Using Google ggmap package for obtaining geospatial data of locations and storing it in 
+ file "location_df"
+use following commented code for getting location data for locations in 
+employee reviews dataset from google API.
+
+```{r location data, echo=FALSE}
+
+
+
+#register_google('Your-google-API-Key')
+
+#Address <- read_data %>% filter(is.na(location) == FALSE) %>% distinct(data, location)
+
+#Address <- as.data.frame(Address)
+
+#locations_df <-  mutate_geocode(Address, location)
+
+#locations_df <- as_tibble(locations_df)
+
+#write.csv(locations_df, "your_file_path_to_store")
+
+
+```
+
+
+
+importing and tidying dataset
+
+```{r}
+
+read_data <- read_csv("E:/classes resources/DS 5110/project/employee_reviews.csv" , 
+                      guess_max = 1000 ,
+                      na = c("none", "n/a") )
+locations_df <- read.csv("E:/classes resources/DS 5110/project/locations_df.csv") %>% 
+                as.tibble()
+
+
+tidy_data <- read_data %>% full_join(locations_df) %>%
+            select(-X) %>%
+            separate(`job-title` , into=c("job-title","designation"), sep = "-") %>%
+            mutate(dates = mdy(`dates`))
+
+
+
+
+
+```
+
+
+
+```{r}
+# knowing number of employees in company 
+tidy_data %>% 
+  group_by(company) %>%
+  count()
+
+
+# current and former employees in each company
+tidy_data %>% 
+  group_by(company, `job-title`) %>%
+  count()
+```
+
+
+
+```{r data summary for each observation}
+
+
+
+data_intro <- tidy_data 
+
+
+#Each company positive and negative overall ratings on map
+data_intro %>% 
+  filter(`company` != "NA",`overall-ratings` != "NA") %>%  
+  mutate(`overall rating` = ifelse(`overall-ratings` > 3 , "Positive" , "Negative")) %>%
+  ggplot() +
+  borders("world", colour = "white", fill = "gray50")+ 
+  geom_point(aes(x = lon, y = lat, colour =`overall rating`)) +
+  scale_color_manual(values = c("red", "green")) + facet_wrap(~company) +theme_void()
+
+########Interactive maps to visualise observations data.
+library(leaflet)
+
+###############Tree Map of jobtitles
+library(treemap)
+#install.packages("treemap")
+title_count <- data_intro %>% group_by(designation) %>% summarize(count = n())%>% arrange(desc(count))
+
+Top_title_count <- title_count[-1,] 
+
+Top_20_title_count <- Top_title_count[1:20,]
+
+treemap(Top_20_title_count,
+        index = "designation",
+        vSize = "count",
+        palette = "RdBu",
+        fontsize.title = 10 )
+
+
+leaflet(Top_title_count) %>% addTiles() %>%
+  addMarkers(lng = ~data_intro$lon, 
+             lat = ~data_intro$lat,
+             clusterOptions = markerClusterOptions(),
+             
+             popup = paste("<b>", "Company :", "</b>", data_intro$company, "<br>",
+                           "<b>", "Employment :","</b>", data_intro$`job-title`, "<br>",
+                           "<b>", "Designation :","</b>" ,data_intro$designation, "<br>",
+                           "<b>", "Overall rating :","</b>" ,data_intro$`overall-ratings`))
+
+
+
+
+```
+
+Location vs overall rating
+
+```{r location vs overall rating }
+
+location_plot_data <- tidy_data
+
+
+#Removing the rows which has 'none' as there rating and location
+location_plot_data <- location_plot_data %>%
+  filter(location != 'NA' )
+  
+#Top Locations to work for in Google
+google <- location_plot_data %>%
+  filter(company == "google") %>%
+  group_by(location, lon, lat) %>%
+  summarise(Mean = mean(`overall-ratings`), Count = n()) %>% 
+  arrange((Count)) %>%
+  filter(Count > 41) %>% #1% of total employees (4148)
+  arrange(desc(Mean))
+  
+#Selecting top 5 locations for Google
+googleTop5 <- google[1:5,]
+
+#Bar plot for Google
+ggplot(googleTop5, aes(x = reorder(location, Mean), y = Mean)) +
+  geom_bar(stat = "identity", fill="green4") +
+  labs(title="Top 5 Locations to work in Google" , x = "Top Locations" , y="Mean of Overall Rating") +
+  coord_flip()
+
+#World map plot for Google
+ggplot(googleTop5, aes(x=lon, y=lat, color=location)) +
+  borders("world", colour = "gray50", fill = "gray50") + 
+  labs(title="Top 5 Locations to work in Google" , x = "Longitude" , y="Latitude") +
+  geom_point()
+
+
+
+
+
+```
+
+
+AMAZON
+
+```{r}
+#Top Locations to work for in Amazon
+amazon <- location_plot_data %>%
+  filter(company == "amazon") %>%
+  group_by(location, lon, lat) %>%
+  summarise(Mean = mean(`overall-ratings`), Count = n()) %>% 
+  arrange((Count)) %>%
+  filter(Count > 140) %>% # approx less than 1% of total employees (16796)
+  arrange(desc(Mean))
+
+#Selecting top 5 locations for Amazon
+amazonTop5 <- amazon[1:5,]
+
+#Bar plot for Amazon
+ggplot(amazonTop5, aes(x = reorder(location, Mean), y = Mean)) +
+  geom_bar(stat = "identity", fill="gold") +
+  labs(title="Top 5 Locations to work in Amazon" , x = "Top Locations" , y="Mean of Overall Rating") +
+  coord_flip()
+
+#World map plot for Amazon
+ggplot(amazonTop5, aes(x=lon, y=lat, color=location)) +
+  borders("world", colour = "gray50", fill = "gray50") + 
+  labs(title="Top 5 Locations to work in Amazon" , x = "Longitude" , y="Latitude") +
+  geom_point()
+
+
+```
+
+
+APPLE
+
+```{r}
+#Top Locations to work for in Apple
+apple <- location_plot_data %>%
+  filter(company == "apple") %>%
+  group_by(location, lon, lat) %>%
+  summarise(Mean = mean(`overall-ratings`), Count = n()) %>% 
+  arrange((Count)) %>%
+  filter(Count > 75) %>% #1% of total employees (7573)
+  arrange(desc(Mean))
+
+#Selecting top 5 locations for Apple
+appleTop5 <- apple[1:5,]
+
+#Bar plot for Apple
+ggplot(appleTop5, aes(x = reorder(location, Mean), y = Mean)) +
+  geom_bar(stat = "identity", fill="black") +
+  labs(title="Top 5 Locations to work in Apple" , x = "Top Locations" , y="Mean of Overall Rating") +
+  coord_flip()
+
+#World map plot for Apple
+ggplot(appleTop5, aes(x=lon, y=lat, color=location)) +
+  borders("world", colour = "gray50", fill = "gray50") + 
+  labs(title="Top 5 Locations to work in Apple" , x = "Longitude" , y="Latitude") +
+  geom_point()
+
+
+```
+
+
+FACEBOOK
+
+```{r}
+#Top Locations to work for in Facebook
+facebook <- location_plot_data %>%
+  filter(company == "facebook") %>%
+  group_by(location, lon, lat) %>%
+  summarise(Mean = mean(`overall-ratings`), Count = n()) %>% 
+  arrange((Count)) %>%
+  filter(Count > 15) %>% #1% of total employees (1590)
+  arrange(desc(Mean))
+
+#Selecting top 5 locations for Facebook
+facebookTop5 <- facebook[1:5,]
+
+#Bar plot for Facebook
+ggplot(facebookTop5, aes(x = reorder(location, Mean), y = Mean)) +
+  geom_bar(stat = "identity", fill="blue") +
+  labs(title="Top 5 Locations to work in Facebook" , x = "Top Locations" , y="Mean of Overall Rating") +
+  coord_flip()
+
+#World map plot for Facebook
+ggplot(facebookTop5, aes(x=lon, y=lat, color=location)) +
+  borders("world", colour = "gray50", fill = "gray50") + 
+  labs(title="Top 5 Locations to work in Facebook" , x = "Longitude" , y="Latitude") +
+  geom_point()
+
+
+
+
+```
+
+MICROSOFT
+
+```{r}
+#Top Locations to work for in Microsoft
+microsoft <- location_plot_data %>%
+  filter(company == "microsoft") %>%
+  group_by(location, lon, lat) %>%
+  summarise(Mean = mean(`overall-ratings`), Count = n()) %>% 
+  arrange((Count)) %>%
+  filter(Count > 110) %>% #1% of total employees (11735)
+  arrange(desc(Mean))
+
+#Selecting top 5 locations for Microsoft
+microsoftTop5 <- microsoft[1:5,]
+
+#Bar plot for Microsoft
+ggplot(microsoftTop5, aes(x = reorder(location, Mean), y = Mean)) +
+  geom_bar(stat = "identity", fill="orange3") +
+  labs(title="Top 5 Locations to work in Microsoft" , x = "Top Locations" , y="Mean of Overall Rating") +
+  coord_flip()
+
+#World map plot for Microsoft
+ggplot(microsoftTop5, aes(x=lon, y=lat, color=location)) +
+  borders("world", colour = "gray50", fill = "gray50") + 
+  labs(title="Top 5 Locations to work in Microsoft" , x = "Longitude" , y="Latitude") +
+  geom_point()
+```
+
+
+NETFLIX
+
+```{r}
+
+#Top Locations to work for in Netflix
+netflixTop5 <- location_plot_data %>%
+  filter(company == "netflix") %>%
+  group_by(location, lon, lat) %>%
+  summarise(Mean = mean(`overall-ratings`), Count = n()) %>% 
+  arrange((Count)) %>%
+  filter(Count > 5) %>% #1% of total employees (562)
+  arrange(desc(Mean))
+
+#Selecting top 5 locations for Netflix
+netflixTop5 <- netflixTop5[1:5,]
+
+#Bar plot for Netflix
+ggplot(netflixTop5, aes(x = reorder(location, Mean), y = Mean)) +
+  geom_bar(stat = "identity", fill="red") +
+  labs(title="Top 5 Locations to work in Netflix" , x = "Top Locations" , y="Mean of Overall Rating") +
+  coord_flip()
+
+#World map plot for Netflix
+ggplot(netflixTop5, aes(x=lon, y=lat, color=location)) +
+  borders("world", colour = "gray50", fill = "gray50") + 
+  labs(title="Top 5 Locations to work in Netflix" , x = "Longitude" , y="Latitude") +
+  geom_point()
+
+
+
+
+```
+
+
+
+YEAR VS OVERALL RATING
+
+
+```{r}
+year_read <- tidy_data
+
+year_plot2 <- year_read %>% 
+        mutate(dates = as.character(year_read$dates)) %>%
+        mutate(dates = ifelse(is.na(dates), 0 ,dates)) %>%
+        filter(dates != 0) %>%
+        mutate(year = as.character(year(dates)))
+
+# smooth curve to show yearly variations of overall ratings for each company
+year_plot2 %>%
+  filter(`company` != "NA") %>%
+  ggplot(aes(x= as.numeric(`year`),y = `overall-ratings`)) +
+  geom_smooth(aes( colour=`company`),se=FALSE) +
+  facet_wrap( ~ `company`)+
+  labs(title= "Yearly average ratings for all companies" , x = "year" , y="overall rating") +
+scale_x_continuous(breaks = c(2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018))+
+  theme(axis.text.x = element_text(angle=45 ,hjust =1))
+```
+
+
+
+
+
+```{r}
+year_plot1 <- year_read %>% 
+        mutate(dates = as.character(year_read$dates)) %>%
+        mutate(dates = ifelse(is.na(dates), 0 ,dates)) %>%
+        filter(dates != 0) %>%
+        mutate(year = as.character(year(dates)))
+
+# yearly statistics of overall ratings for each company
+year_plot1 %>%
+  filter(`company` != "NA") %>%
+  filter(`year` %in% c("2010":"2018")) %>%
+  ggplot() +
+  geom_boxplot(aes(x=`year`, y =`overall-ratings`, fill = `company`), position = "dodge2")+
+  facet_wrap( ~ `company`) +
+  theme(axis.text.x = element_text(angle=45 ,hjust =1)) +
+  labs(title= "statistics of ratings yearly for all companies" , x = "year" , y="overall rating")
+
+
+# plotted through manually calculating the means for each year
+year_plot2 %>%
+  filter(`company` != "NA") %>%
+  group_by(`company`,`year`) %>%
+  summarize(mean_overall = mean(`overall-ratings`)) %>%
+  ggplot(aes(x= as.numeric(`year`),y = `mean_overall`)) +
+  geom_point(aes(colour=`company`)) +
+  geom_line(aes(colour=`company`)) +
+  scale_x_continuous(breaks = c(2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018))+
+  facet_wrap( ~ `company`)+
+  labs(title= "Yearly average ratings for all companies" , x = "year" , y="mean overall rating") +
+  theme(axis.text.x = element_text(angle=45 ,hjust =1))
+```
+
+
+Animated plots for yearly plots 
+
+```{r}
+year_animated <- year_plot2 %>%
+  filter(`company` != "NA") %>%
+  group_by(`company`,`year`,`lon`,`lat`) %>%
+  summarize(mean_overall = mean(`overall-ratings`))
+year_animated
+
+year_animated_amazon <- year_animated %>%
+                        filter(company == "amazon")
+
+year_animated_apple <- year_animated %>%
+                        filter(company == "apple")
+
+year_animated_facebook <- year_animated %>%
+                        filter(company == "facebook")
+
+year_animated_google <- year_animated %>%
+                        filter(company == "google")
+year_animated_microsoft <- year_animated %>%
+                        filter(company == "microsoft")
+year_animated_netflix <- year_animated %>%
+                        filter(company == "netflix")
+
+
+world <- ggplot() +
+  borders("world", colour = "black", fill = "gray80") +
+  borders("state") +
+  theme_map()
+```
+
+yearly animated plot for Amazon
+
+```{r}
+year_map2_amazon <- world +
+  geom_point(year_animated_amazon, 
+             mapping=aes(x = lon, y = lat, colour = cut_width(`mean_overall`, 1, boundary = 0)),
+             size= 5 , alpha = 0.5) +
+  coord_cartesian(xlim = c(-60,-140) , y=c(25,50)) +
+  transition_manual(`year`) +
+  labs(title = "Amazon , year : {current_frame}") +
+  scale_colour_manual(values = c("blue","orange","red","green") , name = "ratings") 
+
+
+year_map2_amazon <- animate(year_map2_amazon, fps = 20, duration = 10)
+
+```
+
+yearly animated plot for Apple 
+```{r}
+year_map2_apple  <- world +
+  geom_point(year_animated_apple, 
+             mapping=aes(x = lon, y = lat, colour = cut_width(`mean_overall`, 1, boundary = 0)), 
+             size = 5 ,alpha = 0.5) +
+  coord_cartesian(xlim = c(-60,-140) , y=c(25,50)) +
+  transition_manual(`year`) +
+  labs(title = "Apple, year : {current_frame}") +
+  scale_colour_manual(values = c("blue","orange","red","green"), name = "ratings") 
+
+year_map2_apple <- animate(year_map2_apple, fps = 20, duration = 10)
+```
+
+yearly animated plot for Facebook 
+
+```{r}
+year_map2_facebook <- world +
+  geom_point(year_animated_facebook,
+             mapping=aes(x = lon, y = lat, colour = cut_width(`mean_overall`, 1, boundary = 0)), 
+             size=5, alpha = 0.5) +
+  coord_cartesian(xlim = c(-60,-140) , y=c(25,50)) +
+  transition_manual(`year`) +
+  labs(title = "Facebook ,year : {current_frame}") +
+  scale_colour_manual(values = c("blue","orange","red","green"), name = "ratings") 
+  
+animate(year_map2_facebook, fps = 20, duration = 10)
+```
+
+yearly animated plot for google 
+
+```{r}
+year_map2_google <- world +
+  geom_point(year_animated_google,
+             mapping=aes(x = lon, y = lat, colour = cut_width(`mean_overall`, 1, boundary = 0)),
+             size= 5 ,alpha = 0.5) +
+  coord_cartesian(xlim = c(-60,-140) , y=c(25,50)) +
+  transition_manual(`year`) +
+  labs(title = "Google, year : {current_frame}") +
+  scale_colour_manual(values = c("blue","orange","red","green"), name = "ratings") 
+
+year_map2_google <- animate(year_map2_google, fps = 20, duration = 10)
+```
+
+ yearly animated plot for Microsoft
+```{r}
+year_map2_microsoft <- world +
+  geom_point(year_animated_microsoft,
+             mapping=aes(x = lon, y = lat, colour = cut_width(`mean_overall`, 1, boundary = 0)), 
+             size= 5, alpha = 0.5) +
+  coord_cartesian(xlim = c(-60,-140) , y=c(25,50)) +
+  transition_manual(`year`) +
+  labs(title = "Microsoft, year : {current_frame}") +
+  scale_colour_manual(values = c("blue","orange","red","green"), name = "ratings") 
+
+year_map2_microsoft <- animate(year_map2_microsoft, fps = 20, duration = 10)
+```
+
+yearly animated plot for Netlfix
+```{r}
+
+year_map2_netflix <- world +
+  geom_point(year_animated_netflix,
+             mapping=aes(x = lon, y = lat, colour = cut_width(`mean_overall`, 1, boundary = 0)),
+             size = 5, alpha = 0.5) +
+  coord_cartesian(xlim = c(-60,-140) , y=c(25,50)) +
+  transition_manual(`year`) +
+  labs(title = "Netflix, year : {current_frame}") +
+  scale_colour_manual(values = c("blue","orange","red","green"), name = "ratings") 
+year_map2_netflix <- animate(year_map2_netflix, fps = 20, duration = 10)
+anim_save("netflix1.gif", year_map2_netflix ) 
+
+year_map2_world <- world +
+  geom_point(year_animated,
+             mapping=aes(x = lon, y = lat, size = `mean_overall`,
+                                        colour= company),  alpha = 0.5) +
+  transition_manual(`year`) +
+  labs(title = "year : {current_frame}") +
+  scale_size_continuous(range = c(0,5), breaks = c(1,2,3,4,5)) +
+  scale_colour_manual(values = c("deepskyblue","coral","darkorange1","red","blue","green"), name = "ratings") 
+year_map2_world <- animate(year_map2_world, fps = 20, duration = 10)
+
+
+```
+
+overall ratings vs other aspects
+
+
+```{r}
+general_data <- tidy_data
+
+ general_data <- general_data %>% 
+   filter(`overall-ratings` !="none" & `culture-values-stars`!="none" & `work-balance-stars`!="none" &`carrer-opportunities-stars` !="none" &`comp-benefit-stars`!="none" & `senior-mangemnet-stars`!="none")
+ 
+companynames <- general_data %>% 
+  group_by(company) %>% 
+  summarise(observations = n())
+
+company_overallrating <-general_data %>%
+  group_by(`overall-ratings`,company) %>% 
+  summarise(rating = n())
+```
+
+overall rating proportions each company
+```{r}
+
+full_join(companynames,company_overallrating) %>% 
+  mutate(fine=rating/observations) %>% 
+  ggplot()+
+  geom_bar(mapping = aes(x=company,y=fine,fill=as.factor( `overall-ratings`)),
+           stat = "identity",position = "dodge")+
+  labs(title="Proportion of overall rating vs Company", x="Company",
+       y="Proportion of overall rating",fill="overall-ratings")
+
+
+company_workbalance <- general_data  %>% 
+  group_by(`work-balance-stars`,company) %>%
+  summarise(total=n())
+full_join(company_workbalance,companynames) %>%
+  mutate(workbalance= total/observations ) %>%
+  ggplot()+geom_bar(mapping = aes(x=company,y=workbalance,fill=as.factor(`work-balance-stars`)),
+                    stat = "identity",position = "dodge")+
+  labs(title="Proportion of Work-Balance-Stars vs Company", x="Company",
+       y="Proportion of Work-Balance-Stars",fill="work-balance-stars")
+
+
+general_data[["dates"]] <- mdy(general_data[["dates"]])
+general_data <- mutate(general_data,year=year(dates))
+general_data <- mutate(general_data,pos= str_sub(general_data[["job-title"]],1,16))
+general_data <- mutate(general_data,pos=str_trim(general_data[["pos"]]))
+
+company_position <-general_data %>% 
+  group_by(pos,company) %>% 
+  summarise(position=n())
+
+ full_join(company_position,companynames) %>%
+   mutate(probability=position/observations) %>% 
+   ggplot()+geom_bar(mapping = aes(x=company,y=probability,fill=pos),
+                     stat = "identity",position = "dodge")+
+   labs(title="Employee Status", x="Company", y="Proportion")
+
+
+positions <- general_data %>% 
+  group_by(company,pos) %>% 
+  summarise(totalpos=n())
+
+overall_pos <- general_data %>% 
+  group_by(company,pos,`overall-ratings`) %>%
+  summarise(eachpos=n())
+
+full_join(positions,overall_pos) %>% mutate(prop=eachpos/totalpos) %>% 
+  ggplot()+
+  geom_bar(mapping = aes(x=pos,y=prop,fill=as.factor(`overall-ratings`),
+                         position = "dodge"),stat = "identity",position = "dodge")+
+  labs(title="Proportion of overall rating vs Employee Status", 
+       x="Employee Status", y="Proportion of overall rating",fill="overall-ratings")+
+  facet_wrap(~company)+coord_flip()
+
+
+
+average<- general_data %>% 
+  gather(`overall-ratings`,`work-balance-stars`,`culture-values-stars`,
+         `carrer-opportunities-stars`,`comp-benefit-stars`,`senior-mangemnet-stars`,
+         key="fields",value = "ratings") %>% group_by(company,fields,ratings) %>% 
+  summarise(totals=n())%>% mutate(prod=as.numeric(ratings)*totals) %>% 
+  group_by(company,fields) %>% summarise(totalsum=sum(prod))
+
+
+
+full_join(average,companynames) %>% group_by(company,fields) %>%
+  mutate(totalratings=totalsum/observations) %>% 
+  ggplot()+geom_bar(mapping = aes(x=company,y=totalratings,fill=company,position = "dodge"),
+                    stat = "identity") +facet_wrap(~fields)+
+  coord_flip()+
+  labs(title="Company vs Average of all six-ratings", y="Average of all six-ratings",
+       x="company",fill="company") + 
+  scale_fill_manual(values = c("gold","black","blue","green4","orange3","red"))
+
+
+average_pos<- general_data %>%
+  gather(`overall-ratings`,`work-balance-stars`,`culture-values-stars`,
+         `carrer-opportunities-stars`,`comp-benefit-stars`,`senior-mangemnet-stars`,
+         key="fields",value = "ratings") %>% group_by(company,fields,ratings,pos) %>%
+  summarise(posavg=n())%>% mutate(product=as.numeric(ratings)*posavg) %>%
+  group_by(company,fields,pos) %>% summarise(numerator=sum(product))
+
+
+
+full_join(companynames,average_pos)  %>% 
+  mutate(totalratings=numerator/observations) %>% 
+  ggplot()+geom_bar(mapping = aes(x=company,y=totalratings,fill=pos),
+                    stat = "identity",position = "dodge") +facet_wrap(~fields)+
+            coord_flip()+
+  labs(title="Company vs Proportion of Average ratings contributed by Current asnd Former Employees",
+       x="Company", y="Average of all six-ratings",fill="position")
+
+
+
+
+
+```
+
