@@ -1,0 +1,120 @@
+---
+title: "Modelling"
+author: "Aishwarya"
+date: "10/16/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+AMAZON
+
+```{r cars}
+library(modelr)
+
+year_read_tidy <-  tidy_data %>%
+        filter(`work-balance-stars` != "NA",
+               `culture-values-stars` != "NA"   ,     
+               `carrer-opportunities-stars` != "NA" , 
+               `comp-benefit-stars` != "NA" , 
+               `senior-mangemnet-stars`!= "NA") 
+               
+review_train_amazon <- year_read_tidy %>%
+                      filter(`company` == "amazon")
+
+set.seed(3)#reproducibility!
+         
+
+```
+
+FITTING THE MODEL
+
+
+
+```{r cars}
+lmFit_amazon_all <- lm(`overall-ratings` ~ `work-balance-stars` + 
+                         `culture-values-stars`+
+               `carrer-opportunities-stars`+ `comp-benefit-stars` +
+                `senior-mangemnet-stars` ,
+                data = review_train_amazon)
+summary(lmFit_amazon_all)
+```
+
+
+RESIDUAL PLOTS
+```{r cars}
+review_train_amazon %>%
+add_residuals(lmFit_amazon_all) %>%
+ggplot(aes(sample=resid)) +
+geom_qq() +
+  labs(title ="Amazon- residuals distribution",
+       x="quantile",
+       y = "residual")
+ggsave("Amazon residual quantile plot new.jpg")
+
+
+# with as factors.
+lmFit_amazon <- lm(`overall-ratings` ~ as.factor(`work-balance-stars`) + as.factor(`culture-values-stars`)+
+               as.factor(`carrer-opportunities-stars`)+ as.factor(`comp-benefit-stars`) +
+                as.factor(`senior-mangemnet-stars`) ,
+                data = review_train_amazon)
+
+review_train_amazon %>%
+add_residuals(lmFit_amazon) %>%
+ggplot(aes(sample=resid)) +
+geom_qq() +
+  labs(title ="Amazon- residuals distribution",
+       x="quantile",
+       y = "residual")
+
+
+step(lmFit_amazon)
+
+summary(lmFit_amazon)
+```
+
+
+APLLE
+```{r }
+year_read_tidy <-  tidy_data %>%
+        filter(`work-balance-stars` != "NA",
+               `culture-values-stars` != "NA"   ,     
+               `carrer-opportunities-stars` != "NA" , 
+               `comp-benefit-stars` != "NA" , 
+               `senior-mangemnet-stars`!= "NA")  
+               
+review_train_apple <- year_read_tidy %>%
+                      filter(`company` == "apple")
+
+
+
+```
+
+FITTING THE MODEL
+
+```{r}
+lmFit_apple <- lm(`overall-ratings` ~ as.factor(`work-balance-stars`) + as.factor(`culture-values-stars`)+
+               as.factor(`carrer-opportunities-stars`)+ as.factor(`comp-benefit-stars`) +
+                as.factor(`senior-mangemnet-stars`) ,
+                data = review_train_apple)
+
+summary(lmFit_apple)
+```
+
+RESIDUAL PLOTS
+
+```{r}
+review_train_apple %>%
+add_residuals(lmFit_apple) %>%
+ggplot(aes(sample=resid)) +
+geom_qq() +
+  labs(title ="Apple- residuals distribution",
+       x="quantile",
+       y = "residual")
+
+
+
+```
+
